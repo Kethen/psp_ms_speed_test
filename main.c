@@ -21,6 +21,8 @@ PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 #define setTextColor pspDebugScreenSetTextColor
 #define setBackColor pspDebugScreenSetBackColor
 
+#define US_PER_SEC 1000000.0f
+
 
 int log_fd = -1;
 #define LOG(...) { \
@@ -47,11 +49,11 @@ int pattern_not_match(char* dst, u32 dst_size, char* pattern, u32 pattern_size){
     return 0;
 }
 
-int write_file(char * path, u32 block_size, u32 blocks, char *pattern, u32 pattern_size, u32 *out_clock_cycles){
+int write_file(char * path, u32 block_size, u32 blocks, char *pattern, u32 pattern_size, clock_t *out_clock_ticks){
     char block[block_size];
     fill_pattern(block, block_size, pattern, pattern_size);
 
-    clock_t begin_cycles = sceKernelLibcClock();
+    clock_t begin_ticks = sceKernelLibcClock();
 
     int fd = sceIoOpen(path, PSP_O_WRONLY|PSP_O_CREAT, 0666);
     if(fd < 0){
@@ -66,16 +68,16 @@ int write_file(char * path, u32 block_size, u32 blocks, char *pattern, u32 patte
         }
     }
 
-    *out_clock_cycles = sceKernelLibcClock() - begin_cycles;
+    *out_clock_ticks = sceKernelLibcClock() - begin_ticks;
 
     sceIoClose(fd);
     return 0;
 }
 
-int read_file(char *path, u32 block_size, u32 blocks, char *pattern, u32 pattern_size, clock_t *out_clock_cycles){
+int read_file(char *path, u32 block_size, u32 blocks, char *pattern, u32 pattern_size, clock_t *out_clock_ticks){
     char block[block_size];
 
-    clock_t begin_cycles = sceKernelLibcClock();
+    clock_t begin_ticks = sceKernelLibcClock();
 
     int fd = sceIoOpen(path, PSP_O_RDONLY, 0666);
     if(fd < 0){
@@ -93,7 +95,7 @@ int read_file(char *path, u32 block_size, u32 blocks, char *pattern, u32 pattern
         }
     }
 
-    *out_clock_cycles = sceKernelLibcClock() - begin_cycles;
+    *out_clock_ticks = sceKernelLibcClock() - begin_ticks;
 
     sceIoClose(fd);
     return 0;
@@ -118,8 +120,8 @@ int main(void)
         sceKernelExitGame();
     }
 
-    float clock_speed = scePowerGetCpuClockFrequencyFloat();
-    LOG("clock speed is %f\n", clock_speed);
+    int clock_speed = scePowerGetCpuClockFrequencyFloat();
+    LOG("cpu clock speed is %i MHz\n", clock_speed);
 
     char path_buf[128];
     sprintf(path_buf, fs, "ms_test_10MB");
@@ -127,21 +129,23 @@ int main(void)
 
     char test_pattern[] = {0, 1, 2, 3, 4, 5, 6, 7};
 
-    clock_t cycles;
+    clock_t ticks;
 
     LOG("beginning tests\n");
 
-    int res = write_file(path_buf, 2048, 10 * 1024 * 1024 / 2048, test_pattern, sizeof(test_pattern), &cycles);
-    LOG("first write took %f seconds, %s\n", cycles / clock_speed, res ? "failed" : "succeed");
+    int res = write_file(path_buf, 2048, 10 * 1024 * 1024 / 2048, test_pattern, sizeof(test_pattern), &ticks);
+    LOG("first write took %f seconds, %s\n", ticks / US_PER_SEC, res ? "failed" : "succeed");
 
-    res = write_file(path_buf, 2048, 10 * 1024 * 1024 / 2048, test_pattern, sizeof(test_pattern), &cycles);
-    LOG("second write took %f seconds, %s\n", cycles / clock_speed, res ? "failed" : "succeed");
+    res = write_file(path_buf, 2048, 10 * 1024 * 1024 / 2048, test_pattern, sizeof(test_pattern), &ticks);
+    LOG("second write took %f seconds, %s\n", ticks / US_PER_SEC, res ? "failed" : "succeed");
 
-    res = read_file(path_buf, 2048, 10 * 1024 * 1024 / 2048, test_pattern, sizeof(test_pattern), &cycles);
-    LOG("first read took %f seconds, %s\n", cycles / clock_speed, res ? "failed" : "succeed");
+    res = read_file(path_buf, 2048, 10 * 1024 * 1024 / 2048, test_pattern, sizeof(test_pattern), &ticks);
+    LOG("first read took %f seconds, %s\n", ticks / US_PER_SEC, res ? "failed" : "succeed");
 
-    res = read_file(path_buf, 2048, 10 * 1024 * 1024 / 2048, test_pattern, sizeof(test_pattern), &cycles);
-    LOG("second read took %f seconds, %s\n", cycles / clock_speed, res ? "failed" : "succeed");
+    res = read_file(path_buf, 2048, 10 * 1024 * 1024 / 2048, test_pattern, sizeof(test_pattern), &ticks);
+    LOG("second read took %f seconds, %s\n", ticks / US_PER_SEC, res ? "failed" : "succeed");
+
+    sceIoRemove(path_buf);
 
     if(log_fd >= 0){
         sceIoClose(log_fd);
